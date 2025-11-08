@@ -731,17 +731,18 @@ const DataModule = {
                         validCashierId = '00000000-0000-0000-0000-000000000000';
                     }
                     
+                    // Use the correct column names for your database
                     const saleToSave = {
                         ...sale,
-                        cashierId: validCashierId,
-                        // Use both column names for compatibility
-                        receipt_number: sale.receiptNumber,
+                        // Use actual database column names
                         receiptnumber: sale.receiptNumber,
-                        cashier_id: validCashierId
+                        cashierid: validCashierId,
+                        // Remove any potential problematic fields
+                        clientSaleId: undefined,
+                        receipt_number: undefined,
+                        cashier_id: undefined,
+                        cashierId: undefined
                     };
-                    
-                    // Remove any potential problematic fields
-                    delete saleToSave.clientSaleId;
                     
                     const { data, error } = await supabase
                         .from('sales')
@@ -1063,15 +1064,17 @@ async function syncSale(operation) {
         if (fetchError) throw fetchError;
         
         if (!existingSales || existingSales.length === 0) {
+            // Use the correct column names for your database
             const saleToSave = {
                 ...operation.data,
-                // Use both column names for compatibility
-                receipt_number: operation.data.receiptNumber,
                 receiptnumber: operation.data.receiptNumber,
-                cashier_id: validCashierId
+                cashierid: validCashierId,
+                // Remove any potential problematic fields
+                clientSaleId: undefined,
+                receipt_number: undefined,
+                cashier_id: undefined,
+                cashierId: undefined
             };
-            
-            delete saleToSave.clientSaleId;
             
             const { data, error } = await supabase
                 .from('sales')
@@ -1287,6 +1290,7 @@ function setupRealtimeListeners() {
 // Local Storage Functions
 function loadFromLocalStorage() {
     try {
+        // Use let instead of const to allow reassignment
         let savedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
         if (savedProducts) {
             const parsedProducts = JSON.parse(savedProducts);
@@ -1297,6 +1301,7 @@ function loadFromLocalStorage() {
             }
         }
         
+        // Use let instead of const to allow reassignment
         let savedSales = localStorage.getItem(STORAGE_KEYS.SALES);
         if (savedSales) {
             const parsedSales = JSON.parse(savedSales);
@@ -1307,6 +1312,7 @@ function loadFromLocalStorage() {
             }
         }
         
+        // Use let instead of const to allow reassignment
         let savedDeletedSales = localStorage.getItem(STORAGE_KEYS.DELETED_SALES);
         if (savedDeletedSales) {
             const parsedDeletedSales = JSON.parse(savedDeletedSales);
@@ -1317,6 +1323,7 @@ function loadFromLocalStorage() {
             }
         }
         
+        // Use let instead of const to allow reassignment
         let savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
         if (savedUsers) {
             const parsedUsers = JSON.parse(savedUsers);
@@ -1327,6 +1334,7 @@ function loadFromLocalStorage() {
             }
         }
         
+        // Use let instead of const to allow reassignment
         let savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
         if (savedSettings) {
             const parsedSettings = JSON.parse(savedSettings);
@@ -1335,6 +1343,7 @@ function loadFromLocalStorage() {
             }
         }
         
+        // Use let instead of const to allow reassignment
         let savedCurrentUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
         if (savedCurrentUser) {
             const parsedCurrentUser = JSON.parse(savedCurrentUser);
