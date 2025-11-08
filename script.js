@@ -456,9 +456,13 @@ const DataModule = {
                     }
                 } else if (data && Array.isArray(data)) {
                     const validatedSales = data.map(sale => {
-                        if (!sale.receiptNumber) {
-                            sale.receiptNumber = sale.receipt_number || `UNKNOWN_${Date.now()}`;
+                        // Handle both column name variations
+                        if (!sale.receiptNumber && sale.receiptnumber) {
+                            sale.receiptNumber = sale.receiptnumber;
+                        } else if (!sale.receiptNumber && !sale.receiptnumber) {
+                            sale.receiptNumber = `UNKNOWN_${Date.now()}`;
                         }
+                        
                         if (!sale.items) sale.items = [];
                         if (typeof sale.total !== 'number') {
                             sale.total = parseFloat(sale.total) || 0;
@@ -730,7 +734,9 @@ const DataModule = {
                     const saleToSave = {
                         ...sale,
                         cashierId: validCashierId,
+                        // Use both column names for compatibility
                         receipt_number: sale.receiptNumber,
+                        receiptnumber: sale.receiptNumber,
                         cashier_id: validCashierId
                     };
                     
@@ -1048,17 +1054,20 @@ async function syncSale(operation) {
         
         operation.data.cashierId = validCashierId;
         
+        // Use receiptnumber instead of receiptNumber to match the database column
         const { data: existingSales, error: fetchError } = await supabase
             .from('sales')
             .select('*')
-            .eq('receiptNumber', operation.data.receiptNumber);
+            .eq('receiptnumber', operation.data.receiptNumber);
         
         if (fetchError) throw fetchError;
         
         if (!existingSales || existingSales.length === 0) {
             const saleToSave = {
                 ...operation.data,
+                // Use both column names for compatibility
                 receipt_number: operation.data.receiptNumber,
+                receiptnumber: operation.data.receiptNumber,
                 cashier_id: validCashierId
             };
             
@@ -1278,7 +1287,7 @@ function setupRealtimeListeners() {
 // Local Storage Functions
 function loadFromLocalStorage() {
     try {
-        const savedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+        let savedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
         if (savedProducts) {
             const parsedProducts = JSON.parse(savedProducts);
             if (Array.isArray(parsedProducts)) {
@@ -1288,7 +1297,7 @@ function loadFromLocalStorage() {
             }
         }
         
-        const savedSales = localStorage.getItem(STORAGE_KEYS.SALES);
+        let savedSales = localStorage.getItem(STORAGE_KEYS.SALES);
         if (savedSales) {
             const parsedSales = JSON.parse(savedSales);
             if (Array.isArray(parsedSales)) {
@@ -1298,7 +1307,7 @@ function loadFromLocalStorage() {
             }
         }
         
-        const savedDeletedSales = localStorage.getItem(STORAGE_KEYS.DELETED_SALES);
+        let savedDeletedSales = localStorage.getItem(STORAGE_KEYS.DELETED_SALES);
         if (savedDeletedSales) {
             const parsedDeletedSales = JSON.parse(savedDeletedSales);
             if (Array.isArray(parsedDeletedSales)) {
@@ -1308,7 +1317,7 @@ function loadFromLocalStorage() {
             }
         }
         
-        const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+        let savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
         if (savedUsers) {
             const parsedUsers = JSON.parse(savedUsers);
             if (Array.isArray(parsedUsers)) {
@@ -1318,7 +1327,7 @@ function loadFromLocalStorage() {
             }
         }
         
-        const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+        let savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
         if (savedSettings) {
             const parsedSettings = JSON.parse(savedSettings);
             if (parsedSettings && typeof parsedSettings === 'object') {
@@ -1326,7 +1335,7 @@ function loadFromLocalStorage() {
             }
         }
         
-        const savedCurrentUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+        let savedCurrentUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
         if (savedCurrentUser) {
             const parsedCurrentUser = JSON.parse(savedCurrentUser);
             if (parsedCurrentUser && typeof parsedCurrentUser === 'object') {
@@ -2908,7 +2917,7 @@ if (cancelProductBtn) {
 const clearCartBtn = document.getElementById('clear-cart-btn');
 if (clearCartBtn) {
     clearCartBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear the cart?')) {
+        if (confirm('Are you sure you want to clear cart?')) {
             clearCart();
         }
     });
@@ -3167,5 +3176,5 @@ async function init() {
     }, 30 * 60 * 1000);
 }
 
-// Start the app
+// Start app
 init();
