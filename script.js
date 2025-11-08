@@ -381,9 +381,74 @@ async function processSyncQueue() {
     }
 }
 
+// Helper function to validate and fix user ID
+async function ensureValidUserId(userId) {
+    if (!userId) {
+        console.error('No user ID provided');
+        return null;
+    }
+    
+    // Check if it's already a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(userId)) {
+        // Check if this UUID exists in the users table
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', userId)
+                .single();
+            
+            if (!error && data) {
+                return userId; // Valid UUID that exists in users table
+            }
+        } catch (error) {
+            console.error('Error checking user ID:', error);
+        }
+    }
+    
+    // If we get here, the user ID is not a valid UUID or doesn't exist in the users table
+    console.warn('Invalid user ID or user not found in database:', userId);
+    
+    // Try to find the user by email if we have the current user
+    if (currentUser && currentUser.email) {
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', currentUser.email)
+                .single();
+            
+            if (!error && data) {
+                console.log('Found user by email, updating current user ID');
+                currentUser.id = data.id;
+                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+                return data.id;
+            }
+        } catch (error) {
+            console.error('Error finding user by email:', error);
+        }
+    }
+    
+    // If we still can't find a valid user ID, create a default user or use a fallback
+    console.warn('Using fallback user ID');
+    return '00000000-0000-0000-0000-000000000000'; // Default fallback UUID
+}
+
 // Individual sync functions for better error handling
 async function syncSale(operation) {
     try {
+        // Ensure we have a valid cashierId
+        const validCashierId = await ensureValidUserId(operation.data.cashierId);
+        
+        if (!validCashierId) {
+            console.error('Cannot sync sale: No valid cashier ID');
+            return false;
+        }
+        
+        // Update the operation data with the valid cashierId
+        operation.data.cashierId = validCashierId;
+        
         // Check if sale already exists by receipt number
         const { data: existingSales, error: fetchError } = await supabase
             .from('sales')
@@ -410,6 +475,7 @@ async function syncSale(operation) {
                 const localSaleIndex = sales.findIndex(s => s.receiptNumber === operation.data.receiptNumber);
                 if (localSaleIndex !== -1) {
                     sales[localSaleIndex].id = data[0].id;
+                    sales[localSaleIndex].cashierId = validCashierId; // Update with valid ID
                     saveToLocalStorage();
                 }
                 return true;
@@ -421,6 +487,7 @@ async function syncSale(operation) {
                 const localSaleIndex = sales.findIndex(s => s.receiptNumber === operation.data.receiptNumber);
                 if (localSaleIndex !== -1) {
                     sales[localSaleIndex].id = existingSales[0].id;
+                    sales[localSaleIndex].cashierId = validCashierId; // Update with valid ID
                     saveToLocalStorage();
                 }
             }
@@ -1830,37 +1897,46 @@ const DataModule = {
             if (isOnline) {
                 // Online: Try to save to Supabase
                 try {
-                    // Try different possible column names
+                    // Ensure we have a valid cashierId
+                    const validCashierId = await ensureValidUserId(sale.cashierId);
+                    
+                    if (!validCashierId) {
+                        console.error('Cannot save sale: No valid cashier ID');
+                        return localResult;
+                    }
+                    
+                    // Update the sale data with the valid cashierId
                     const saleToSave = {
-                        receiptNumber: sale.receiptNumber,
-                        items: sale.items,
-                        total: sale.total,
-                        created_at: sale.created_at,
-                        cashier: sale.cashier,
-                        cashierId: sale.cashierId,
+                        ...sale,
+                        cashierId: validCashierId
+                    };
+                    
+                    // Try different possible column names
+                    const saleWithMultipleNames = {
+                        ...saleToSave,
                         // Try different column names
-                        receipt_number: sale.receiptNumber,
-                        cashier_id: sale.cashierId
+                        receipt_number: saleToSave.receiptNumber,
+                        cashier_id: saleToSave.cashierId
                     };
                     
                     const { data, error } = await supabase
                         .from('sales')
-                        .insert(saleToSave)
+                        .insert(saleWithMultipleNames)
                         .select();
                     
                     if (error) {
-                        console.error('Supabase insert error:', error);
                         throw error;
                     }
                     
                     if (data && data.length > 0) {
-                        // Update local sale with Supabase ID
+                        // Update the local sale with the Supabase ID
                         const index = sales.findIndex(s => s.receiptNumber === sale.receiptNumber);
                         if (index >= 0) {
                             sales[index].id = data[0].id;
+                            sales[index].cashierId = validCashierId; // Update with valid ID
                             saveToLocalStorage();
                         }
-                        return { success: true, sale: { ...sale, id: data[0].id } };
+                        return { success: true, sale: { ...sale, id: data[0].id, cashierId: validCashierId } };
                     } else {
                         throw new Error('No data returned from insert operation');
                     }
@@ -2840,6 +2916,14 @@ async function completeSale() {
     completeSaleBtn.disabled = true;
     
     try {
+        // Ensure we have a valid cashierId before creating the sale
+        const validCashierId = await ensureValidUserId(currentUser.id);
+        
+        if (!validCashierId) {
+            showNotification('Error: Invalid user ID. Please try logging in again.', 'error');
+            return;
+        }
+        
         // Create sale object with unique client ID
         const sale = {
             receiptNumber: generateReceiptNumber(),
@@ -2848,7 +2932,7 @@ async function completeSale() {
             total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
             created_at: new Date().toISOString(),
             cashier: currentUser.name,
-            cashierId: currentUser.id
+            cashierId: validCashierId // Use the validated cashier ID
         };
         
         // Save sale with better error handling
