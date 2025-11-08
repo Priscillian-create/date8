@@ -1561,37 +1561,8 @@ const DataModule = {
                         return sale;
                     });
                     
-                    // Create a map of existing local sales by receipt number
-                    const localSalesByReceipt = {};
-                    sales.forEach(sale => {
-                        if (sale && sale.receiptNumber) {
-                            localSalesByReceipt[sale.receiptNumber] = sale;
-                        }
-                    });
-                    
-                    // Merge server data with local data
-                    const mergedSales = [];
-                    const processedReceipts = new Set();
-                    
-                    // Add server sales first
-                    validatedSales.forEach(serverSale => {
-                        mergedSales.push(serverSale);
-                        processedReceipts.add(serverSale.receiptNumber);
-                    });
-                    
-                    // Add local sales that aren't on server yet
-                    sales.forEach(localSale => {
-                        if (localSale && localSale.receiptNumber && !processedReceipts.has(localSale.receiptNumber)) {
-                            mergedSales.push(localSale);
-                        }
-                    });
-                    
-                    // Sort by date (newest first)
-                    mergedSales.sort((a, b) => {
-                        const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
-                        const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
-                        return dateB - dateA;
-                    });
+                    // MERGE LOGIC: Preserve local sales that aren't on server yet
+                    const mergedSales = this.mergeSalesData(validatedSales);
                     
                     // Update global sales variable
                     sales = mergedSales;
@@ -1622,6 +1593,64 @@ const DataModule = {
             // Fall back to local data
             return sales;
         }
+    },
+    
+    // NEW: Helper function to merge sales data properly
+    mergeSalesData(serverSales) {
+        // Create a map of server sales by receipt number for quick lookup
+        const serverSalesMap = {};
+        serverSales.forEach(sale => {
+            serverSalesMap[sale.receiptNumber] = sale;
+        });
+        
+        // Create a map of local sales by receipt number for quick lookup
+        const localSalesMap = {};
+        sales.forEach(sale => {
+            if (sale && sale.receiptNumber) {
+                localSalesMap[sale.receiptNumber] = sale;
+            }
+        });
+        
+        // Merge the data
+        const mergedSales = [];
+        
+        // First, add all server sales
+        serverSales.forEach(serverSale => {
+            const localSale = localSalesMap[serverSale.receiptNumber];
+            
+            if (localSale) {
+                // If we have a local version, check if it has been modified more recently
+                const serverDate = new Date(serverSale.updated_at || serverSale.created_at || 0);
+                const localDate = new Date(localSale.updated_at || localSale.created_at || 0);
+                
+                if (localDate > serverDate) {
+                    // Local version is newer, use it
+                    mergedSales.push(localSale);
+                } else {
+                    // Server version is newer or same age, use it
+                    mergedSales.push(serverSale);
+                }
+            } else {
+                // No local version, use server version
+                mergedSales.push(serverSale);
+            }
+        });
+        
+        // Then, add any local sales that aren't on the server yet
+        sales.forEach(localSale => {
+            if (localSale && localSale.receiptNumber && !serverSalesMap[localSale.receiptNumber]) {
+                mergedSales.push(localSale);
+            }
+        });
+        
+        // Sort by date (newest first)
+        mergedSales.sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+            const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+            return dateB - dateA;
+        });
+        
+        return mergedSales;
     },
     
     // Fetch deleted sales from Supabase
@@ -1929,7 +1958,7 @@ const DataModule = {
                     }
                     
                     if (data && data.length > 0) {
-                        // Update the local sale with the Supabase ID
+                        // Update local sale with the Supabase ID
                         const index = sales.findIndex(s => s.receiptNumber === sale.receiptNumber);
                         if (index >= 0) {
                             sales[index].id = data[0].id;
@@ -2916,7 +2945,7 @@ async function completeSale() {
     completeSaleBtn.disabled = true;
     
     try {
-        // Ensure we have a valid cashierId before creating the sale
+        // Ensure we have a valid cashierId before creating sale
         const validCashierId = await ensureValidUserId(currentUser.id);
         
         if (!validCashierId) {
